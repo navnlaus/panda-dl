@@ -50,6 +50,18 @@ impl Engine {
             for (id, handle) in torrent_active.iter() {
                 if let Some(task) = tasks.get_mut(id) {
                     let stats = handle.stats();
+                    // Its files being checked (it starts, or goes on): progress_bytes is how much
+                    // is checked, not downloaded (it went from 0 to 100%, then back to what it
+                    // was). What's known stays meanwhile; it says how far the check is.
+                    if matches!(stats.state, librqbit::TorrentStatsState::Initializing { .. }) {
+                        task.checked_bytes = Some(stats.progress_bytes);
+                        task.download_speed = 0;
+                        task.upload_speed = 0;
+                        task.eta_seconds = None;
+                        speeds.remove(id);
+                        continue;
+                    }
+                    task.checked_bytes = None;
                     // Its files (once the metadata is known), each with how much of it is downloaded:
                     // a torrent finishes its files at different times.
                     let folder = handle.output_folder().to_path_buf();
@@ -98,8 +110,19 @@ impl Engine {
                     let delta_down = stats.progress_bytes.saturating_sub(prev_down);
                     let delta_up = stats.uploaded_bytes.saturating_sub(prev_up);
 
-                    task.download_speed = (delta_down as f64 / elapsed) as u64;
-                    task.upload_speed = (delta_up as f64 / elapsed) as u64;
+                    // librqbit's own estimate while it's live: smoothed over several seconds.
+                    // (progress_bytes grows a whole piece at a time, so a second's growth was 0
+                    // now and then, and the speed with it.)
+                    match &stats.live {
+                        Some(live) => {
+                            task.download_speed = live.download_speed.as_bytes();
+                            task.upload_speed = live.upload_speed.as_bytes();
+                        }
+                        None => {
+                            task.download_speed = (delta_down as f64 / elapsed) as u64;
+                            task.upload_speed = (delta_up as f64 / elapsed) as u64;
+                        }
+                    }
 
                     if task.download_speed > 0 && stats.total_bytes > stats.progress_bytes {
                         task.eta_seconds =

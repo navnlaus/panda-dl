@@ -366,6 +366,7 @@ impl Engine {
                 files: Vec::new(),
                 own_folder: false,
                 only_files: None,
+            checked_bytes: None,
             };
 
             engine.tasks.write().await.insert(id.clone(), task);
@@ -460,6 +461,7 @@ impl Engine {
             files: Vec::new(),
             own_folder: true,
             only_files: None,
+            checked_bytes: None,
         };
 
         self.tasks.write().await.insert(id.clone(), task);
@@ -573,6 +575,7 @@ impl Engine {
             files: Vec::new(),
             own_folder: false,
             only_files: None,
+            checked_bytes: None,
         };
 
         self.tasks.write().await.insert(id.clone(), task);

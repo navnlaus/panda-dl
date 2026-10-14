@@ -78,6 +78,10 @@ pub struct DownloadTask {
     /// A torrent's files being downloaded, by index (None: all of them).
     #[serde(default)]
     pub only_files: Option<Vec<usize>>,
+    /// A torrent's files being checked (when it starts or goes on): how much of it is checked so
+    /// far. Its progress stays what it was meanwhile.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checked_bytes: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
