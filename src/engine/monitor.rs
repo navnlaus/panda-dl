@@ -3,7 +3,7 @@ use std::time::Instant;
 
 use crate::capture::send_notification;
 
-use super::types::{DownloadStatus, DownloadTask};
+use super::types::{DownloadStatus, DownloadTask, FileProgress};
 use super::Engine;
 
 impl Engine {
@@ -50,6 +50,23 @@ impl Engine {
             for (id, handle) in torrent_active.iter() {
                 if let Some(task) = tasks.get_mut(id) {
                     let stats = handle.stats();
+                    // Its files (once the metadata is known), each with how much of it is downloaded:
+                    // a torrent finishes its files at different times.
+                    let folder = handle.output_folder().to_path_buf();
+                    if let Ok(files) = handle.with_metadata(|m| {
+                        m.file_infos
+                            .iter()
+                            .enumerate()
+                            .filter(|(_, f)| !f.attrs.padding)
+                            .map(|(i, f)| FileProgress {
+                                path: folder.join(&f.relative_filename).display().to_string(),
+                                length: f.len,
+                                downloaded: stats.file_progress.get(i).copied().unwrap_or(0),
+                            })
+                            .collect::<Vec<_>>()
+                    }) {
+                        task.files = files;
+                    }
                     task.total_bytes = Some(stats.total_bytes);
                     task.downloaded_bytes = stats.progress_bytes;
                     task.uploaded_bytes = stats.uploaded_bytes;

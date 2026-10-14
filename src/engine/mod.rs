@@ -311,6 +311,7 @@ impl Engine {
                     .as_secs(),
                 parts: vec![],
                 torrent_info: None,
+                files: Vec::new(),
             };
 
             engine.tasks.write().await.insert(id.clone(), task);
@@ -402,6 +403,7 @@ impl Engine {
                 .as_secs(),
             parts: Vec::new(),
             torrent_info: None,
+            files: Vec::new(),
         };
 
         self.tasks.write().await.insert(id.clone(), task);
@@ -512,6 +514,7 @@ impl Engine {
                 .as_secs(),
             parts: parts.clone(),
             torrent_info: None,
+            files: Vec::new(),
         };
 
         self.tasks.write().await.insert(id.clone(), task);

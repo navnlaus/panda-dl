@@ -36,6 +36,14 @@ pub struct TorrentInfo {
     pub finished_pieces: usize,
 }
 
+/// One file of a torrent: where it's written, its size, and how much of it is downloaded.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileProgress {
+    pub path: String,
+    pub length: u64,
+    pub downloaded: u64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DownloadTask {
     pub id: String,
@@ -53,6 +61,9 @@ pub struct DownloadTask {
     pub created_at: u64,
     pub parts: Vec<PartInfo>,
     pub torrent_info: Option<TorrentInfo>,
+    /// A torrent's files, once its metadata is known (empty otherwise).
+    #[serde(default)]
+    pub files: Vec<FileProgress>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
