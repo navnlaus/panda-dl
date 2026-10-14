@@ -42,6 +42,13 @@ pub struct FileProgress {
     pub path: String,
     pub length: u64,
     pub downloaded: u64,
+    /// Being downloaded (not skipped).
+    #[serde(default = "selected_by_default")]
+    pub selected: bool,
+}
+
+fn selected_by_default() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -68,6 +75,9 @@ pub struct DownloadTask {
     /// (downloads added before this put its files in `output_path` itself).
     #[serde(default)]
     pub own_folder: bool,
+    /// A torrent's files being downloaded, by index (None: all of them).
+    #[serde(default)]
+    pub only_files: Option<Vec<usize>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

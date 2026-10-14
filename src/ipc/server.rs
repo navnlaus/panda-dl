@@ -143,6 +143,17 @@ impl IpcServer {
                     },
                 }
             }
+            Request::Skip { id, paths } => {
+                match engine.skip_files(&id, &paths).await {
+                    Ok(removed) => Response::Ok {
+                        id: Some(id),
+                        message: Some(if removed { "Download removed" } else { "Files skipped" }.to_string()),
+                    },
+                    Err(e) => Response::Error {
+                        message: e.to_string(),
+                    },
+                }
+            }
             Request::OpenFile { id } => {
                 let status = engine.get_status().await;
                 if let Some(task) = status.downloads.iter().find(|t| t.id == id) {

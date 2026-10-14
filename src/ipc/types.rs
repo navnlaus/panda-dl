@@ -25,6 +25,11 @@ pub enum Request {
         #[serde(default)]
         delete_file: bool,
     },
+    /// Stops downloading some of a torrent's files (`paths`: theirs, or folders of them).
+    Skip {
+        id: String,
+        paths: Vec<String>,
+    },
     OpenFile {
         id: String,
     },

@@ -53,6 +53,7 @@ impl Engine {
                     // Its files (once the metadata is known), each with how much of it is downloaded:
                     // a torrent finishes its files at different times.
                     let folder = handle.output_folder().to_path_buf();
+                    let only = handle.only_files();
                     if let Ok(files) = handle.with_metadata(|m| {
                         m.file_infos
                             .iter()
@@ -62,6 +63,7 @@ impl Engine {
                                 path: folder.join(&f.relative_filename).display().to_string(),
                                 length: f.len,
                                 downloaded: stats.file_progress.get(i).copied().unwrap_or(0),
+                                selected: only.as_ref().map_or(true, |o| o.contains(&i)),
                             })
                             .collect::<Vec<_>>()
                     }) {

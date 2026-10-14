@@ -6,7 +6,7 @@ pub mod types;
 pub mod youtube;
 
 use anyhow::Result;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
@@ -178,7 +178,7 @@ impl Engine {
     }
 
     pub async fn resume_download(self: &Arc<Self>, id: &str) -> Result<()> {
-        let (kind, uri, output_path, parts, own_folder) = {
+        let (kind, uri, output_path, parts, own_folder, only_files) = {
             let mut tasks = self.tasks.write().await;
             let task = tasks.get_mut(id).ok_or_else(|| anyhow::anyhow!("Task not found"))?;
 
@@ -195,6 +195,7 @@ impl Engine {
                 PathBuf::from(&task.output_path),
                 task.parts.clone(),
                 task.own_folder,
+                task.only_files.clone(),
             )
         };
 
@@ -213,7 +214,7 @@ impl Engine {
                 if let Some(handle) = handle {
                     let _ = self.torrent.unpause(&handle).await;
                 } else {
-                    let handle = self.torrent.add(&uri, Some(&output_path), own_folder).await?;
+                    let handle = self.torrent.add(&uri, Some(&output_path), own_folder, only_files).await?;
                     self.torrent_active
                         .lock()
                         .await
@@ -246,18 +247,68 @@ impl Engine {
                 let _ = self.torrent.remove(&handle, delete_file).await;
             }
 
-            if delete_file {
+            // A torrent's files are deleted by librqbit (it knows which they are); `output_path` is
+            // the folder it downloads into (Downloads, say), never deleted. Another download's: its file.
+            if delete_file && task.kind != DownloadKind::Torrent {
                 let p = Path::new(&task.output_path);
                 if p.is_file() {
                     let _ = std::fs::remove_file(p);
-                } else if p.is_dir() {
-                    let _ = std::fs::remove_dir_all(p);
                 }
             }
         }
 
         self.save_tasks().await?;
         Ok(())
+    }
+
+    /// Stops downloading some of a torrent's files (`paths`: theirs, or folders of them); what's
+    /// downloaded of them stays. With none of its files left, the torrent is removed (its files
+    /// stay): true then.
+    pub async fn skip_files(&self, id: &str, paths: &[String]) -> Result<bool> {
+        let handle = self
+            .torrent_active
+            .lock()
+            .await
+            .get(id)
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("Not a torrent being downloaded"))?;
+        let folder = handle.output_folder().to_path_buf();
+        let files: Vec<(usize, PathBuf)> = handle.with_metadata(|m| {
+            m.file_infos
+                .iter()
+                .enumerate()
+                .filter(|(_, f)| !f.attrs.padding)
+                .map(|(i, f)| (i, folder.join(&f.relative_filename)))
+                .collect()
+        })?;
+        let skip: HashSet<usize> = files
+            .iter()
+            .filter(|(_, p)| paths.iter().any(|s| p.starts_with(Path::new(s))))
+            .map(|(i, _)| *i)
+            .collect();
+        if skip.is_empty() {
+            anyhow::bail!("None of those are this torrent's files");
+        }
+        let current: HashSet<usize> = match handle.only_files() {
+            Some(only) => only.into_iter().collect(),
+            None => files.iter().map(|(i, _)| *i).collect(),
+        };
+        let mut keep: Vec<usize> = files
+            .iter()
+            .map(|(i, _)| *i)
+            .filter(|i| current.contains(i) && !skip.contains(i))
+            .collect();
+        if keep.is_empty() {
+            self.remove_download(id, false).await?;
+            return Ok(true);
+        }
+        keep.sort_unstable();
+        self.torrent.update_only_files(&handle, &keep.iter().copied().collect()).await?;
+        if let Some(task) = self.tasks.write().await.get_mut(id) {
+            task.only_files = Some(keep);
+        }
+        self.save_tasks().await?;
+        Ok(false)
     }
 
     pub async fn get_status(&self) -> DaemonStatus {
@@ -314,6 +365,7 @@ impl Engine {
                 torrent_info: None,
                 files: Vec::new(),
                 own_folder: false,
+                only_files: None,
             };
 
             engine.tasks.write().await.insert(id.clone(), task);
@@ -407,6 +459,7 @@ impl Engine {
             torrent_info: None,
             files: Vec::new(),
             own_folder: true,
+            only_files: None,
         };
 
         self.tasks.write().await.insert(id.clone(), task);
@@ -414,7 +467,7 @@ impl Engine {
 
         let engine = Arc::clone(self);
         tokio::spawn(async move {
-            match engine.torrent.add(&uri, Some(&target_dir), true).await {
+            match engine.torrent.add(&uri, Some(&target_dir), true, None).await {
                 Ok(handle) => {
                     let hash_hex = handle
                         .info_hash()
@@ -519,6 +572,7 @@ impl Engine {
             torrent_info: None,
             files: Vec::new(),
             own_folder: false,
+            only_files: None,
         };
 
         self.tasks.write().await.insert(id.clone(), task);

@@ -32,7 +32,7 @@ impl TorrentManager {
     /// torrent has it, a torrent in folder form in its folder there, a single file by itself (librqbit
     /// puts a folder's files straight into the folder it's given): its details are read first (a
     /// magnet's metadata fetched), then it's added with the peers found meanwhile.
-    pub async fn add(&self, uri: &str, custom_dir: Option<&Path>, own_folder: bool) -> Result<Arc<ManagedTorrent>> {
+    pub async fn add(&self, uri: &str, custom_dir: Option<&Path>, own_folder: bool, only_files: Option<Vec<usize>>) -> Result<Arc<ManagedTorrent>> {
         let mut folder = custom_dir.map(|p| p.to_path_buf()).unwrap_or_else(|| self.output_dir.clone());
         let mut initial_peers = None;
         if own_folder {
@@ -62,6 +62,7 @@ impl TorrentManager {
             output_folder: Some(folder.display().to_string()),
             overwrite: true,
             initial_peers,
+            only_files,
             ..Default::default()
         };
 
@@ -73,6 +74,13 @@ impl TorrentManager {
             Some(handle) => Ok(handle),
             None => bail!("Could not get handle for torrent"),
         }
+    }
+
+    /// Downloads only these of its files (by index).
+    pub async fn update_only_files(&self, handle: &Arc<ManagedTorrent>, only: &std::collections::HashSet<usize>) -> Result<()> {
+        self.session.update_only_files(handle, only).await
+            .context("Failed to change which files are downloaded")?;
+        Ok(())
     }
 
     pub async fn pause(&self, handle: &Arc<ManagedTorrent>) -> Result<()> {
