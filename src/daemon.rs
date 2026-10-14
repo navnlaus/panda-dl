@@ -15,9 +15,9 @@ pub async fn run_daemon() -> Result<()> {
     let config = Arc::new(RwLock::new(Config::load()));
     let engine = Engine::new(Arc::clone(&config)).await?;
 
-    let watcher = Arc::new(ClipboardWatcher::new(
-        config.read().await.auto_capture_clipboard,
-    ));
+    // Always watching: whether what's copied is downloaded is the config's
+    // auto_capture_clipboard, as it is when it's copied (set_config changes it).
+    let watcher = Arc::new(ClipboardWatcher::new(true));
 
     // Spawn clipboard watcher
     let engine_for_clip = Arc::clone(&engine);
