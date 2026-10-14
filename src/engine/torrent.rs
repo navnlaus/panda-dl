@@ -1,8 +1,8 @@
 use anyhow::{bail, Context, Result};
 use librqbit::{
-    AddTorrent, AddTorrentOptions, ManagedTorrent, Session, SessionOptions,
+    AddTorrent, AddTorrentOptions, AddTorrentResponse, ManagedTorrent, Session, SessionOptions,
 };
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
 pub struct TorrentManager {
@@ -28,11 +28,40 @@ impl TorrentManager {
         Arc::clone(&self.session)
     }
 
-    pub async fn add(&self, uri: &str, custom_dir: Option<&Path>) -> Result<Arc<ManagedTorrent>> {
-        let folder = custom_dir.map(|p| p.to_path_buf()).unwrap_or_else(|| self.output_dir.clone());
+    /// Adds a torrent, downloading into `custom_dir` (or the default folder). `own_folder`: as the
+    /// torrent has it, a torrent in folder form in its folder there, a single file by itself (librqbit
+    /// puts a folder's files straight into the folder it's given): its details are read first (a
+    /// magnet's metadata fetched), then it's added with the peers found meanwhile.
+    pub async fn add(&self, uri: &str, custom_dir: Option<&Path>, own_folder: bool) -> Result<Arc<ManagedTorrent>> {
+        let mut folder = custom_dir.map(|p| p.to_path_buf()).unwrap_or_else(|| self.output_dir.clone());
+        let mut initial_peers = None;
+        if own_folder {
+            let listed = self.session.add_torrent(
+                AddTorrent::from_cli_argument(uri)?,
+                Some(AddTorrentOptions { list_only: true, ..Default::default() }),
+            ).await.context("Failed to read the torrent's details")?;
+            match listed {
+                AddTorrentResponse::ListOnly(listed) => {
+                    // A torrent in folder form (files listed, not one `length`): its files are paths in the
+                    // folder `name`, as the torrent has them (librqbit keeps their own subfolders).
+                    if listed.info.info().length.is_none() {
+                        if let Some(name) = listed.info.name() {
+                            let name = Path::new(name.as_ref());
+                            let mut parts = name.components();
+                            if let (Some(Component::Normal(_)), None) = (parts.next(), parts.next()) {
+                                folder = folder.join(name); // a plain name: no path in it
+                            }
+                        }
+                    }
+                    initial_peers = Some(listed.seen_peers);
+                }
+                AddTorrentResponse::AlreadyManaged(_, handle) | AddTorrentResponse::Added(_, handle) => return Ok(handle),
+            }
+        }
         let opts = AddTorrentOptions {
             output_folder: Some(folder.display().to_string()),
             overwrite: true,
+            initial_peers,
             ..Default::default()
         };
 

@@ -178,7 +178,7 @@ impl Engine {
     }
 
     pub async fn resume_download(self: &Arc<Self>, id: &str) -> Result<()> {
-        let (kind, uri, output_path, parts) = {
+        let (kind, uri, output_path, parts, own_folder) = {
             let mut tasks = self.tasks.write().await;
             let task = tasks.get_mut(id).ok_or_else(|| anyhow::anyhow!("Task not found"))?;
 
@@ -194,6 +194,7 @@ impl Engine {
                 task.uri.clone(),
                 PathBuf::from(&task.output_path),
                 task.parts.clone(),
+                task.own_folder,
             )
         };
 
@@ -212,7 +213,7 @@ impl Engine {
                 if let Some(handle) = handle {
                     let _ = self.torrent.unpause(&handle).await;
                 } else {
-                    let handle = self.torrent.add(&uri, Some(&output_path)).await?;
+                    let handle = self.torrent.add(&uri, Some(&output_path), own_folder).await?;
                     self.torrent_active
                         .lock()
                         .await
@@ -312,6 +313,7 @@ impl Engine {
                 parts: vec![],
                 torrent_info: None,
                 files: Vec::new(),
+                own_folder: false,
             };
 
             engine.tasks.write().await.insert(id.clone(), task);
@@ -404,6 +406,7 @@ impl Engine {
             parts: Vec::new(),
             torrent_info: None,
             files: Vec::new(),
+            own_folder: true,
         };
 
         self.tasks.write().await.insert(id.clone(), task);
@@ -411,7 +414,7 @@ impl Engine {
 
         let engine = Arc::clone(self);
         tokio::spawn(async move {
-            match engine.torrent.add(&uri, Some(&target_dir)).await {
+            match engine.torrent.add(&uri, Some(&target_dir), true).await {
                 Ok(handle) => {
                     let hash_hex = handle
                         .info_hash()
@@ -515,6 +518,7 @@ impl Engine {
             parts: parts.clone(),
             torrent_info: None,
             files: Vec::new(),
+            own_folder: false,
         };
 
         self.tasks.write().await.insert(id.clone(), task);

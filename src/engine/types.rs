@@ -64,6 +64,10 @@ pub struct DownloadTask {
     /// A torrent's files, once its metadata is known (empty otherwise).
     #[serde(default)]
     pub files: Vec<FileProgress>,
+    /// A torrent in folder form goes in its folder inside `output_path`, as the torrent has it
+    /// (downloads added before this put its files in `output_path` itself).
+    #[serde(default)]
+    pub own_folder: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
